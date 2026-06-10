@@ -5,7 +5,9 @@ multiple accounts, move money between accounts with **atomic transfers**, and se
 your spending broken down by category. Built on the MERN stack with a secure,
 tested REST API.
 
-> **Live demo:** _add your deployed URL here_ · **Demo login:** _add a seed account_
+> **Live demo:** https://expense-tracker-7q17.onrender.com · **Demo login:** `demo@example.com` / `demo1234`
+>
+> _Hosted on Render's free tier — the first request after idle takes ~50s while the instance spins up._
 
 <!-- Add 2–3 screenshots or a short GIF here once deployed — this matters a lot for a portfolio repo. -->
 <!-- ![Dashboard](docs/dashboard.png) -->
