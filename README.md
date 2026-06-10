@@ -9,8 +9,9 @@ tested REST API.
 >
 > _Hosted on Render's free tier — the first request after idle takes ~50s while the instance spins up._
 
-<!-- Add 2–3 screenshots or a short GIF here once deployed — this matters a lot for a portfolio repo. -->
-<!-- ![Dashboard](docs/dashboard.png) -->
+| Dashboard | Transfers & ledger |
+|:---:|:---:|
+| ![Dashboard — balance, income/expense, accounts](docs/dashboard.png) | ![History with atomic-transfer ledger entries and the transaction form](docs/transactions.png) |
 
 ---
 
