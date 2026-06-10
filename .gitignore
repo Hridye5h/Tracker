@@ -1,1 +1,9 @@
 node_modules/
+client/node_modules/
+client/build/
+config/config.env
+.env
+.DS_Store
+coverage/
+*.log
+npm-debug.log*
