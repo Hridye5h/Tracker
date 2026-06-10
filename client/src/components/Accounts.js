@@ -1,28 +1,37 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { GlobalContext } from '../context/GlobalState';
-import { numberWithCommas } from '../utils/format';
+import { formatMoney } from '../utils/format';
 
-// Accounts panel: create/delete money buckets and move money between them
-// via the atomic-transfer API.
+const ACCOUNT_ICONS = { bank: '🏦', cash: '💵', upi: '📱', card: '💳', wallet: '👛' };
+const accountIcon = (name) => {
+  const k = Object.keys(ACCOUNT_ICONS).find((key) => name.toLowerCase().includes(key));
+  return k ? ACCOUNT_ICONS[k] : '🪙';
+};
+
+// Accounts panel: money buckets + atomic transfers between them.
 export const Accounts = () => {
-  const { accounts, getAccounts, createAccount, deleteAccount, transfer } = useContext(GlobalContext);
+  const { accounts, createAccount, deleteAccount, transfer } = useContext(GlobalContext);
 
+  const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [balance, setBalance] = useState('');
   const [transferForm, setTransferForm] = useState({ fromAccountId: '', toAccountId: '', amount: '' });
   const [msg, setMsg] = useState(null);
 
-  useEffect(() => {
-    getAccounts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const onCreate = (e) => {
     e.preventDefault();
-    if (!name) return;
-    createAccount({ name, balance: +balance || 0 });
+    if (!name.trim()) return;
+    createAccount({ name: name.trim(), balance: +balance || 0 });
     setName('');
     setBalance('');
+    setShowAdd(false);
+  };
+
+  const onDelete = (acc) => {
+    // Cascade: the server deletes the account's transactions with it.
+    if (window.confirm(`Delete "${acc.name}" and all of its transactions? This cannot be undone.`)) {
+      deleteAccount(acc._id);
+    }
   };
 
   const onTransferChange = (e) =>
@@ -37,73 +46,99 @@ export const Accounts = () => {
       amount: +transferForm.amount
     });
     if (res.success) {
-      setMsg({ type: 'ok', text: 'Transfer complete' });
+      setMsg({ type: 'ok', text: 'Transfer complete ✓' });
       setTransferForm({ fromAccountId: '', toAccountId: '', amount: '' });
+      setTimeout(() => setMsg(null), 4000);
     } else {
       setMsg({ type: 'err', text: res.error });
     }
   };
 
   return (
-    <>
-      <h3>Accounts</h3>
-      <ul className="list">
-        {accounts.length === 0 && <li><span className="desc">No accounts yet</span></li>}
+    <section className="card">
+      <div className="card-head">
+        <h3>Accounts</h3>
+        <button className="ghost-btn" onClick={() => setShowAdd(!showAdd)}>
+          {showAdd ? 'Close' : '+ Add'}
+        </button>
+      </div>
+
+      {accounts.length === 0 && (
+        <p className="empty-note">
+          No accounts yet — add one, or just record a transaction and a <strong>Cash</strong> account
+          is created for you automatically.
+        </p>
+      )}
+
+      <ul className="account-list">
         {accounts.map((acc) => (
-          <li key={acc._id}>
-            <span className="desc">
-              {acc.name}
-              <small className="cat">{acc.currency}</small>
+          <li key={acc._id} className="account-row">
+            <span className="account-icon">{accountIcon(acc.name)}</span>
+            <div className="account-meta">
+              <span className="account-name">{acc.name}</span>
+              <span className="account-currency">{acc.currency}</span>
+            </div>
+            <span className={`account-balance ${acc.balance < 0 ? 'neg' : ''}`}>
+              {acc.balance < 0 ? '-' : ''}{formatMoney(acc.balance)}
             </span>
-            <span className="amt">&#8377;{numberWithCommas(acc.balance.toFixed(2))}</span>
-            <button onClick={() => deleteAccount(acc._id)} className="delete-btn">x</button>
+            <button className="icon-btn danger" title="Delete account" onClick={() => onDelete(acc)}>×</button>
           </li>
         ))}
       </ul>
 
-      <form onSubmit={onCreate}>
-        <div className="form-control">
-          <label>New account</label>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bank, Cash, UPI" />
-        </div>
-        <div className="form-control">
-          <label>Opening balance</label>
-          <input type="number" min="0" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} placeholder="0" />
-        </div>
-        <button className="btn">Add account</button>
-      </form>
-
-      {accounts.length >= 2 && (
-        <form onSubmit={onTransfer}>
-          <h4 className="transfer-heading">Transfer between accounts</h4>
-          {msg && <p className={msg.type === 'ok' ? 'transfer-ok' : 'auth-error'}>{msg.text}</p>}
-          <div className="form-control">
-            <label>From</label>
-            <select name="fromAccountId" value={transferForm.fromAccountId} onChange={onTransferChange} required>
-              <option value="">Select…</option>
-              {accounts.map((a) => (
-                <option key={a._id} value={a._id}>
-                  {a.name} (&#8377;{numberWithCommas(a.balance.toFixed(2))})
-                </option>
-              ))}
-            </select>
+      {showAdd && (
+        <form onSubmit={onCreate} className="inline-form">
+          <div className="form-row">
+            <div className="form-control grow">
+              <label>Account name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bank, Cash, UPI" autoFocus />
+            </div>
+            <div className="form-control">
+              <label>Opening balance</label>
+              <input type="number" min="0" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} placeholder="0" />
+            </div>
           </div>
-          <div className="form-control">
-            <label>To</label>
-            <select name="toAccountId" value={transferForm.toAccountId} onChange={onTransferChange} required>
-              <option value="">Select…</option>
-              {accounts.map((a) => (
-                <option key={a._id} value={a._id}>{a.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-control">
-            <label>Amount</label>
-            <input type="number" min="0" step="0.01" name="amount" value={transferForm.amount} onChange={onTransferChange} placeholder="Amount to move" required />
-          </div>
-          <button className="btn">Transfer</button>
+          <button className="btn">Add account</button>
         </form>
       )}
-    </>
+
+      {accounts.length >= 2 && (
+        <div className="transfer-block">
+          <h4 className="block-title">🔁 Transfer between accounts</h4>
+          {msg && <p className={msg.type === 'ok' ? 'note-ok' : 'note-err'}>{msg.text}</p>}
+          <form onSubmit={onTransfer}>
+            <div className="form-row">
+              <div className="form-control grow">
+                <label>From</label>
+                <select name="fromAccountId" value={transferForm.fromAccountId} onChange={onTransferChange} required>
+                  <option value="">Select…</option>
+                  {accounts.map((a) => (
+                    <option key={a._id} value={a._id}>{a.name} ({formatMoney(a.balance)})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-control grow">
+                <label>To</label>
+                <select name="toAccountId" value={transferForm.toAccountId} onChange={onTransferChange} required>
+                  <option value="">Select…</option>
+                  {accounts
+                    .filter((a) => a._id !== transferForm.fromAccountId)
+                    .map((a) => (
+                      <option key={a._id} value={a._id}>{a.name}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-control grow">
+                <label>Amount</label>
+                <input type="number" min="0" step="0.01" name="amount" value={transferForm.amount} onChange={onTransferChange} placeholder="Amount to move" required />
+              </div>
+              <button className="btn btn-fit">Transfer</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </section>
   );
 };

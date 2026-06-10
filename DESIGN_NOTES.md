@@ -72,13 +72,41 @@ debited without being credited.
 > MongoDB multi-document transactions require a **replica set**. MongoDB Atlas is a
 > replica set, so it works there; a standalone local `mongod` is not and will reject them.
 
-## 5. Analytics
+## 5. The account-linked ledger (where money actually lives)
+
+Every transaction belongs to an account. The invariant: **an account's balance
+always equals its opening balance plus the sum of its transactions' effects**
+(income adds, expense subtracts).
+
+- **Create**: the ledger row is written and the account's balance is updated in
+  the **same MongoDB transaction** — they can never disagree.
+- **No account specified?** The server falls back to the user's first account,
+  creating a default **"Cash"** account if they have none — so recording
+  "salary ₹10,000" with zero setup still lands the money somewhere real.
+- **Update**: the old effect is reversed and the new one applied (both via
+  `$inc`, which composes correctly even when the old and new account are the
+  same and avoids stale-document races).
+- **Delete**: the effect is refunded to the account.
+- **Deleting an account cascades** to its transactions (one transaction:
+  account + rows go together, so no orphan ledger rows).
+
+Two deliberate asymmetries worth defending in an interview:
+
+1. **Expenses may overdraw an account; transfers may not.** An expense records
+   money *already spent in the real world* — refusing to record it wouldn't
+   make the user richer, it would just make the ledger lie. A transfer is the
+   app itself *moving* money, so it validates funds first.
+2. **Transfers are excluded from income/expense displays.** Moving money
+   between your own accounts is neither income nor expense; excluding the
+   transfer legs keeps `income − expense = change in total balance` exactly.
+
+## 6. Analytics
 
 `GET /transactions/summary` uses a **MongoDB aggregation pipeline**:
 `$match` (this user) → `$group` by `{category, type}` with `$sum: '$amount'` → `$sort`.
 Totals are computed in the database, not by pulling every row into Node.
 
-## 6. Security middleware
+## 7. Security middleware
 
 | Middleware | What it does |
 |---|---|
@@ -87,7 +115,7 @@ Totals are computed in the database, not by pulling every row into Node.
 | `express-rate-limit` | Caps requests per IP → mitigates brute-force / abuse |
 | `cors` | Controls which origins may call the API |
 
-## 7. Testing
+## 8. Testing
 
 Jest + Supertest exercise the **real Express app** against an **in-memory MongoDB**
 (`mongodb-memory-server`) — fast, isolated, and needs no external database. Coverage
@@ -97,7 +125,7 @@ aggregation.
 
 ---
 
-## 8. Likely interview questions (with answers)
+## 9. Likely interview questions (with answers)
 
 **Q: Why JWT instead of server-side sessions?**
 Stateless — the token itself carries the user id and is verified with a secret, so no
@@ -108,6 +136,17 @@ token before it expires; mitigations are short expiry, rotation, or a denylist.
 As a bcrypt hash with a unique per-password salt (cost factor 10). bcrypt is deliberately
 slow and salted, which defeats rainbow tables and slows brute-force. Plaintext is never
 stored or returned (`select:false`).
+
+**Q: Where does the money go when I record income with no account?**
+The server resolves an account for every transaction: an explicit one is
+ownership-checked; otherwise it uses the user's first account, auto-creating a
+default "Cash" account when none exists. The ledger row and the balance update
+commit in one MongoDB transaction, so the books always balance.
+
+**Q: Why can an expense make a balance negative when a transfer can't?**
+An expense records something that already happened — the ledger's job is to
+reflect reality, not gate it. A transfer is the app moving money itself, so it
+validates sufficient funds and runs atomically. Different roles, different rules.
 
 **Q: Walk me through the atomic transfer.**
 Open a session, `startTransaction`, debit/credit the two accounts and write two ledger

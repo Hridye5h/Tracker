@@ -1,12 +1,13 @@
-import React, { createContext, useReducer } from 'react';
+import React, { createContext, useReducer, useEffect } from 'react';
 import AppReducer from './AppReducer';
 import axios from 'axios';
 
-// Transaction + account state. The JWT header is set globally by AuthState,
-// so every Axios call here is automatically authenticated.
+// Transaction + account + summary state. The JWT header is set globally by
+// AuthState, so every Axios call here is automatically authenticated.
 const initialState = {
   transactions: [],
   accounts: [],
+  summary: null,
   editing: null,
   error: null,
   loading: true
@@ -17,7 +18,7 @@ export const GlobalContext = createContext(initialState);
 export const GlobalProvider = ({ children }) => {
   const [state, dispatch] = useReducer(AppReducer, initialState);
 
-  // ---- Transactions ----
+  // ---- Reads ----
   async function getTransactions() {
     try {
       const res = await axios.get('/api/v1/transactions');
@@ -27,37 +28,6 @@ export const GlobalProvider = ({ children }) => {
     }
   }
 
-  async function addTransaction(transaction) {
-    try {
-      const res = await axios.post('/api/v1/transactions', transaction);
-      dispatch({ type: 'ADD_TRANSACTION', payload: res.data.data });
-    } catch (err) {
-      dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error adding transaction' });
-    }
-  }
-
-  async function updateTransaction(id, updates) {
-    try {
-      const res = await axios.put(`/api/v1/transactions/${id}`, updates);
-      dispatch({ type: 'UPDATE_TRANSACTION', payload: res.data.data });
-    } catch (err) {
-      dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error updating transaction' });
-    }
-  }
-
-  async function deleteTransaction(id) {
-    try {
-      await axios.delete(`/api/v1/transactions/${id}`);
-      dispatch({ type: 'DELETE_TRANSACTION', payload: id });
-    } catch (err) {
-      dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error deleting transaction' });
-    }
-  }
-
-  const setEditing = (transaction) => dispatch({ type: 'SET_EDITING', payload: transaction });
-  const clearEditing = () => dispatch({ type: 'CLEAR_EDITING' });
-
-  // ---- Accounts ----
   async function getAccounts() {
     try {
       const res = await axios.get('/api/v1/accounts');
@@ -67,6 +37,61 @@ export const GlobalProvider = ({ children }) => {
     }
   }
 
+  async function getSummary() {
+    try {
+      const res = await axios.get('/api/v1/transactions/summary');
+      dispatch({ type: 'GET_SUMMARY', payload: res.data.data });
+    } catch (err) {
+      dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error fetching summary' });
+    }
+  }
+
+  // Balances move on every mutation, so refresh the money views together.
+  const refreshMoney = () => Promise.all([getAccounts(), getSummary()]);
+
+  // Load everything once on login (this provider only mounts when authed).
+  useEffect(() => {
+    getTransactions();
+    refreshMoney();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- Transactions ----
+  async function addTransaction(transaction) {
+    try {
+      const res = await axios.post('/api/v1/transactions', transaction);
+      dispatch({ type: 'ADD_TRANSACTION', payload: res.data.data });
+      await refreshMoney();
+    } catch (err) {
+      dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error adding transaction' });
+    }
+  }
+
+  async function updateTransaction(id, updates) {
+    try {
+      const res = await axios.put(`/api/v1/transactions/${id}`, updates);
+      dispatch({ type: 'UPDATE_TRANSACTION', payload: res.data.data });
+      await refreshMoney();
+    } catch (err) {
+      dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error updating transaction' });
+    }
+  }
+
+  async function deleteTransaction(id) {
+    try {
+      await axios.delete(`/api/v1/transactions/${id}`);
+      dispatch({ type: 'DELETE_TRANSACTION', payload: id });
+      await refreshMoney();
+    } catch (err) {
+      dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error deleting transaction' });
+    }
+  }
+
+  const setEditing = (transaction) => dispatch({ type: 'SET_EDITING', payload: transaction });
+  const clearEditing = () => dispatch({ type: 'CLEAR_EDITING' });
+  const clearError = () => dispatch({ type: 'CLEAR_ERROR' });
+
+  // ---- Accounts ----
   async function createAccount(account) {
     try {
       const res = await axios.post('/api/v1/accounts', account);
@@ -76,22 +101,23 @@ export const GlobalProvider = ({ children }) => {
     }
   }
 
+  // Cascade: the server also deletes the account's transactions.
   async function deleteAccount(id) {
     try {
       await axios.delete(`/api/v1/accounts/${id}`);
       dispatch({ type: 'DELETE_ACCOUNT', payload: id });
+      await Promise.all([getTransactions(), getSummary()]);
     } catch (err) {
       dispatch({ type: 'TRANSACTION_ERROR', payload: err.response?.data?.error || 'Error deleting account' });
     }
   }
 
-  // Atomic transfer. On success, refresh both balances and the ledger (the
-  // server writes two transactions inside the same DB transaction).
+  // Atomic transfer. On success the server has moved balances and written
+  // both ledger rows inside one DB transaction — re-pull everything.
   async function transfer(payload) {
     try {
       await axios.post('/api/v1/accounts/transfer', payload);
-      await getAccounts();
-      await getTransactions();
+      await Promise.all([getAccounts(), getTransactions(), getSummary()]);
       return { success: true };
     } catch (err) {
       return { success: false, error: err.response?.data?.error || 'Transfer failed' };
@@ -103,16 +129,19 @@ export const GlobalProvider = ({ children }) => {
       value={{
         transactions: state.transactions,
         accounts: state.accounts,
+        summary: state.summary,
         editing: state.editing,
         error: state.error,
         loading: state.loading,
         getTransactions,
+        getAccounts,
+        getSummary,
         addTransaction,
         updateTransaction,
         deleteTransaction,
         setEditing,
         clearEditing,
-        getAccounts,
+        clearError,
         createAccount,
         deleteAccount,
         transfer

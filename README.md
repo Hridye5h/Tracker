@@ -17,13 +17,14 @@ tested REST API.
 
 ## Features
 
+- **Account-linked ledger** — every transaction belongs to an account: income credits it, expense debits it, written **atomically** (ledger row + balance update in one MongoDB transaction). No account yet? A **Cash account is created automatically** so money always lands somewhere real.
 - **JWT authentication** — register / login with bcrypt-hashed passwords; every API route is protected and data is isolated per user.
-- **Full CRUD** on transactions — create, read, **edit**, and delete, each with server-side validation.
+- **Full CRUD** on transactions — editing reverses the old balance effect and applies the new one; deleting refunds it.
 - **Accounts & atomic transfers** — move money between accounts inside a **MongoDB ACID transaction** (debit + credit + ledger entries commit together or roll back).
-- **Spending analytics** — income/expense totals and per-category breakdown computed with a **MongoDB aggregation pipeline**.
+- **Spending analytics** — income/expense totals and a per-category breakdown chart, computed with a **MongoDB aggregation pipeline** (transfers excluded, so income − expense always equals your balance).
 - **Filtering & search** — by type, category, free-text description, and date range.
 - **Hardened API** — `helmet`, rate limiting, NoSQL-injection sanitisation, and CORS.
-- **Tested** — Jest + Supertest integration tests run against an in-memory MongoDB (no external DB required).
+- **Tested** — 16 Jest + Supertest integration tests against an in-memory MongoDB **replica set** (covers balance effects, transfer rollback, and cascade deletes).
 
 ## Tech stack
 

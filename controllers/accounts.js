@@ -20,7 +20,9 @@ exports.createAccount = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: account });
 });
 
-// @desc    Delete an account
+// @desc    Delete an account AND its transaction history (cascade) — both or
+//          neither, inside one MongoDB transaction, so no orphan ledger rows
+//          can ever point at a missing account.
 // @route   DELETE /api/v1/accounts/:id
 // @access  Private
 exports.deleteAccount = asyncHandler(async (req, res) => {
@@ -28,8 +30,20 @@ exports.deleteAccount = asyncHandler(async (req, res) => {
   if (!account || account.user.toString() !== req.user.id) {
     return res.status(404).json({ success: false, error: 'Account not found' });
   }
-  await account.deleteOne();
-  res.status(200).json({ success: true, data: {} });
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    await Transaction.deleteMany({ account: account._id }, { session });
+    await account.deleteOne({ session });
+    await session.commitTransaction();
+    res.status(200).json({ success: true, data: {} });
+  } catch (err) {
+    await session.abortTransaction();
+    res.status(400).json({ success: false, error: err.message });
+  } finally {
+    session.endSession();
+  }
 });
 
 // @desc    Transfer money between two accounts — ATOMICALLY

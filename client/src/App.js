@@ -1,10 +1,10 @@
 import React, { useContext } from 'react';
 import { Header } from './components/Header';
 import { Balance } from './components/Balance';
-import { IncomeExpenses } from './components/IncomeExpenses';
 import { Accounts } from './components/Accounts';
-import { TransactionList } from './components/TransactionList';
 import { AddTransaction } from './components/AddTransaction';
+import { TransactionList } from './components/TransactionList';
+import { CategoryBreakdown } from './components/CategoryBreakdown';
 import { Auth } from './components/Auth';
 
 import { AuthProvider, AuthContext } from './context/AuthState';
@@ -20,13 +20,22 @@ const Dashboard = () => {
 
   return (
     <GlobalProvider>
-      <Header />
-      <div className="container">
-        <Balance />
-        <IncomeExpenses />
-        <Accounts />
-        <TransactionList />
-        <AddTransaction />
+      <div className="shell">
+        <Header />
+        <main className="layout">
+          <div className="col col-left">
+            <Balance />
+            <AddTransaction />
+            <Accounts />
+          </div>
+          <div className="col col-right">
+            <CategoryBreakdown />
+            <TransactionList />
+          </div>
+        </main>
+        <footer className="app-footer">
+          Built with the MERN stack · JWT auth · atomic MongoDB transactions
+        </footer>
       </div>
     </GlobalProvider>
   );
